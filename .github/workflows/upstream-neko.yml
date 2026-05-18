@@ -1,0 +1,23 @@
+name: Check Neko upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 08:17 UTC.
+    - cron: "17 8 * * 1"
+
+concurrency:
+  group: upstream-neko
+  cancel-in-progress: false
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Neko upstream client baseline
+        run: ./scripts/check-neko-upstream.sh

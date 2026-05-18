@@ -1,13 +1,15 @@
-# openclaw-neko-chrome-docker
+# neko-chrome-cdp-docker
 
-Docker setup for [OpenClaw](https://github.com/openclaw/openclaw) browser automation using **Neko** — a visible, interactive browser via WebRTC with full Playwright/CDP automation support.
+Docker setup for **Neko Chrome** with Chrome DevTools Protocol (CDP) access.
+
+This image extends the original [Neko](https://github.com/m1k1o/neko) Chrome container so the same browser session can be used both interactively through Neko's WebRTC UI and programmatically through CDP-compatible tools such as Playwright, Puppeteer, or custom automation scripts.
 
 ## The Problem
 
-[Neko](https://github.com/m1k1o/neko) is great for interactive browser access via WebRTC, but:
+Neko is great for interactive browser access via WebRTC, but the stock Chrome image is not ideal when you also want automation access:
 
-1. Its bundled Chrome version lags behind what Playwright requires (e.g. base image ships 143, Playwright 1.58.1 needs 144+)
-2. Chrome in non-headless mode binds CDP to `127.0.0.1` only — can't be reached from outside the container
+1. Its bundled Chrome version can lag behind what automation tooling expects
+2. Chrome in non-headless mode binds CDP to `127.0.0.1` only, so it cannot be reached directly from outside the container
 3. Neko's managed policy disables DevTools/CDP entirely (`DeveloperToolsAvailability: 2`)
 
 ## The Solution
@@ -15,15 +17,25 @@ Docker setup for [OpenClaw](https://github.com/openclaw/openclaw) browser automa
 A custom Dockerfile that fixes all three issues:
 
 - **Upgrades Chrome stable** to the latest available version via apt
-- **Socat CDP proxy** forwards `0.0.0.0:9223` → `127.0.0.1:9222` inside the container
+- **Adds a socat CDP proxy** forwarding `0.0.0.0:9223` → `127.0.0.1:9222` inside the container
 - **Fixes Chrome policy** to re-enable DevTools/CDP
 
-The result: a single Neko container that serves both interactive WebRTC browsing **and** Playwright automation. No separate headless Chrome needed.
+The result: a single Neko container that serves both interactive WebRTC browsing and CDP automation. No separate headless Chrome needed.
+
+## Upstream
+
+This project is based on the original Neko Chrome image:
+
+- Upstream project: <https://github.com/m1k1o/neko>
+- Base image: `ghcr.io/m1k1o/neko/google-chrome:3`
+- Client: stripped-down Vue frontend based on Neko's original client
+
+The goal is not to replace Neko, but to package a Chrome/CDP-friendly variant for automation use cases. See `UPSTREAM.md` for the upstream tracking policy and reviewed baseline.
 
 ## Architecture
 
-```
-OpenClaw Gateway (Playwright 1.58.1)
+```text
+CDP-compatible client (Playwright, Puppeteer, custom tooling)
     │
     └─ CDP ──→ host 127.0.0.1:9222
                   │
@@ -31,117 +43,132 @@ OpenClaw Gateway (Playwright 1.58.1)
                         │
                         └─→ Chrome 127.0.0.1:9222 (non-headless)
                               │
-                              └─→ visible in Neko WebRTC UI
+                              └─→ Neko WebRTC UI
 ```
 
-Frank (or anyone) can watch the automation live at `https://your-domain/` via WebRTC.
+You can watch and interact with the browser session through Neko while automation controls the same Chrome instance over CDP.
 
 ## Ports
 
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| `9222` | TCP (host, localhost only) | CDP endpoint for Playwright |
-| `8080` | TCP | Neko Web UI (put behind reverse proxy) |
-| `52000-52100` | UDP | WebRTC media streams |
+- `9222/tcp` on host localhost only: CDP endpoint for automation clients
+- `8080/tcp`: Neko Web UI, intended to be placed behind a reverse proxy
+- `52000-52100/udp`: WebRTC media streams
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-# Edit .env with your Neko credentials
+# Edit .env with your Neko credentials, domain, and public IP
 docker compose build
 docker compose up -d
 ```
 
-### OpenClaw config
+### Connect with Playwright
 
-```json
-{
-  "browser": {
-    "enabled": true,
-    "executablePath": "/usr/bin/google-chrome-stable",
-    "attachOnly": true,
-    "defaultProfile": "neko",
-    "profiles": {
-      "neko": {
-        "cdpUrl": "http://127.0.0.1:9222"
-      }
-    }
-  }
-}
+```ts
+import { chromium } from "playwright";
+
+const browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
+const context = browser.contexts()[0] ?? await browser.newContext();
+const page = context.pages()[0] ?? await context.newPage();
+await page.goto("https://example.com");
 ```
 
-### Prerequisites
+### Connect with Puppeteer
 
-- Docker with compose v2
-- A reverse proxy (e.g. Traefik) on a shared `proxy` network for the Web UI
-- UDP ports 52000-52100 open for WebRTC
-- Update `NEKO_NAT1TO1` in `docker-compose.yml` to your server's public IP
+```js
+import puppeteer from "puppeteer-core";
+
+const browser = await puppeteer.connect({
+  browserURL: "http://127.0.0.1:9222",
+});
+
+const page = await browser.newPage();
+await page.goto("https://example.com");
+```
+
+## Prerequisites
+
+- Docker with Compose v2
+- A reverse proxy, for example Traefik, on a shared Docker network
+- UDP ports `52000-52100` open for WebRTC
+- `NEKO_NAT1TO1` / public IP configured so WebRTC can reach the host from outside
 
 ## Key Discoveries
 
-These cost us hours to figure out, so documenting them here:
+These details are easy to miss when combining Neko, Chrome, and CDP.
 
 ### Chrome non-headless always binds CDP to 127.0.0.1
-`--remote-debugging-address=0.0.0.0` is **ignored** in non-headless mode. Chrome always binds to loopback. The socat proxy is the lightest-weight workaround.
+
+`--remote-debugging-address=0.0.0.0` is ignored in non-headless mode. Chrome still binds CDP to loopback. The socat proxy is the lightest-weight workaround.
 
 ### Neko's DevTools policy blocks CDP
-Neko sets `DeveloperToolsAvailability: 2` (disabled) in `/etc/opt/chrome/policies/managed/policies.json`. The Dockerfile patches this to `0`.
+
+Neko sets `DeveloperToolsAvailability: 2` (disabled) in `/etc/opt/chrome/policies/managed/policies.json`. This image replaces that policy and sets it to `0`.
 
 ### Non-default user-data-dir required
-Chrome refuses `--remote-debugging-port` with the default profile data directory. The supervisord config uses `--user-data-dir=/home/neko/.config/google-chrome-cdp`.
 
-### Playwright version compatibility
-Playwright 1.58.1 works with Chrome 144+. The Neko base image ships 143 which does NOT work (WebSocket handshake hangs). Upgrading to latest stable via apt fixes it.
+Chrome refuses `--remote-debugging-port` with the default profile data directory. The supervisord config uses:
 
-### Gateway restart after container rebuild
-When the Neko container is rebuilt, Playwright's cached CDP connection goes stale. A `SIGUSR1` (hot reload) is NOT enough — you need a full gateway kill + restart:
-```bash
-kill -9 $(pgrep -xf openclaw-gateway); sleep 2; openclaw gateway start
+```text
+/home/neko/.config/google-chrome-cdp
 ```
+
+### Automation client compatibility depends on Chrome/CDP version
+
+Some automation clients expect a sufficiently recent Chrome/CDP version. The Neko base image can lag behind, so this image upgrades `google-chrome-stable` during build.
+
+### Restart clients after rebuilding the browser container
+
+When the Neko container is rebuilt or restarted, existing CDP/WebSocket connections become stale. Restart any automation process connected to the old browser instance.
 
 ## Persistent Chrome Data
 
-Chrome's user data (shortcuts, preferences, cookies, extensions state) is stored in a Docker named volume (`chrome-data`) mounted at `/home/neko/.config/google-chrome-cdp`.
+Chrome's user data (shortcuts, preferences, cookies, extensions state) is stored in a Docker named volume (`chrome-data`) mounted at:
+
+```text
+/home/neko/.config/google-chrome-cdp
+```
 
 This means:
-- **`docker compose down` + `up`**: data persists ✅
-- **`docker compose down -v`**: data is wiped (volume deleted)
-- **Rebuild image**: data persists (volume is independent of image)
+
+- `docker compose down` + `docker compose up`: data persists
+- `docker compose down -v`: data is wiped because the volume is deleted
+- image rebuild: data persists because the volume is independent of the image
 
 ### First-time setup
 
-NTP (New Tab Page) shortcuts can't be pre-seeded via Dockerfile — Chrome's NTP has its own internal state that only updates via the UI. After first deployment, add shortcuts manually via the "Add shortcut" button on the new tab page, or use browser automation (CDP). Once added, they persist in the volume.
+New Tab Page shortcuts cannot reliably be pre-seeded via the Dockerfile. Chrome's NTP has its own internal state that updates through the UI. After first deployment, add shortcuts manually via the "Add shortcut" button on the new tab page, or use browser automation through CDP. Once added, they persist in the volume.
 
 ## Chrome Policy
 
 The Dockerfile replaces Neko's restrictive Chrome policy with a clean one (`policies.json`):
 
-- **DevTools/CDP enabled** (Neko disables this by default)
-- **uBlock Origin** force-installed (ad blocking)
-- **SponsorBlock removed** (not needed for automation)
-- No bookmarks bar, no password manager, no autofill, no sync
+- DevTools/CDP enabled
+- uBlock Origin force-installed
+- SponsorBlock removed
+- No bookmarks bar, password manager, autofill, or sync
 
 ## Audio
 
-Audio is **force-disabled** at two levels — no neko.yaml config needed:
+Audio is force-disabled at two levels, so no `neko.yaml` audio config is needed:
 
-1. **Chrome flags**: `--mute-audio`, `--disable-audio-output`, `--disable-audio-input`
-2. **PulseAudio killed**: Dockerfile sets `autospawn = no` and `daemon-binary = /bin/true`
+1. Chrome flags: `--mute-audio`, `--disable-audio-output`, `--disable-audio-input`
+2. PulseAudio disabled: Dockerfile sets `autospawn = no` and `daemon-binary = /bin/true`
 
 ## Neko Lite Client
 
-The `client/` directory contains a stripped-down Vue frontend (based on Neko's original client) with chat, emotes, file transfer, members list, sidebar, and about dialog removed. The Dockerfile uses a multi-stage build to compile and serve this instead of the default Neko UI.
+The `client/` directory contains a stripped-down Vue frontend based on Neko's original client. Chat, emotes, file transfer, members list, sidebar, and about dialog are removed. The Dockerfile uses a multi-stage build to compile and serve this client instead of the default Neko UI.
 
 ## Files
 
-```
+```text
 ├── Dockerfile              # Multi-stage: Vue build + Chrome upgrade + socat + policy
 ├── docker-compose.yml      # Neko container config + persistent volume
 ├── docker-compose.yml.example
 ├── neko.yaml.example       # Neko config template
+├── .env.example            # Credentials and deployment settings template
 ├── policies.json           # Chrome managed policy (DevTools, uBlock, clean defaults)
-├── .env.example            # Credentials template
 ├── google-chrome.conf      # Supervisord: Chrome stable with CDP flags
 ├── cdp-proxy.conf          # Supervisord: socat CDP proxy
 └── client/                 # Neko Lite Vue frontend (stripped)
@@ -149,4 +176,4 @@ The `client/` directory contains a stripped-down Vue frontend (based on Neko's o
 
 ## License
 
-MIT
+The project-specific Docker/configuration code is licensed under MIT. The Neko-derived client code in `client/` remains under Apache License 2.0; see `THIRD_PARTY_NOTICES.md` and `LICENSES/Apache-2.0.txt`.
