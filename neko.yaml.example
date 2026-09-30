@@ -27,6 +27,21 @@ session:
 capture:
   video:
     codec: "vp8"
+    ids: [ main ]
+    pipelines:
+      main:
+        # Neko's default VP8 pipeline plus `damagegate`, which drops frames while
+        # the X11 screen is unchanged (XDamage), so a static screen costs ~10-15%
+        # of a core instead of ~55%. Remove the `! damagegate` part to disable.
+        gst_pipeline: >-
+          ximagesrc display-name={display} show-pointer=true use-damage=false
+          ! video/x-raw,framerate=25/1
+          ! damagegate
+          ! videoconvert ! queue
+          ! vp8enc name=encoder target-bitrate=1996800 cpu-used=4 end-usage=cbr threads=4 deadline=1
+            undershoot=95 buffer-size=12288 buffer-initial-size=6144 buffer-optimal-size=9216
+            keyframe-max-dist=25 min-quantizer=4 max-quantizer=20
+          ! appsink name=appsink
   broadcast:
     autostart: false
   screencast:

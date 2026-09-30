@@ -156,6 +156,30 @@ Audio is force-disabled at two levels, so no `neko.yaml` audio config is needed:
 1. Chrome flags: `--mute-audio`, `--disable-audio-output`, `--disable-audio-input`
 2. PulseAudio disabled: Dockerfile sets `autospawn = no` and `daemon-binary = /bin/true`
 
+## Static-screen CPU: damagegate
+
+Neko captures the screen at a fixed 25 fps and feeds every frame to the encoder, even when nothing changed. A connected viewer on a static 1080p screen costs about half a CPU core.
+
+This image ships a small GStreamer element, `damagegate` (`gst-damagegate/`, compiled in the Dockerfile), placed right after `ximagesrc`. It does not compare pixels: it listens to the X server's **XDamage** events (plus pointer and cursor changes) and drops frames when nothing changed.
+
+- change on screen → frames pass at full framerate, and keep passing for 200 ms after the last change
+- static screen → about 1 frame per second, as a keyframe, so joining viewers get a picture quickly
+- new viewer → the next frame passes and is forced to be a keyframe
+- if X or XDamage is not available it becomes a plain passthrough
+
+It is enabled through the video pipeline in `neko.yaml` (see `neko.yaml.example`); remove `! damagegate` to disable it.
+
+Measured with a connected client, 1080p VP8, same host:
+
+| | neko default | with damagegate |
+|---|---|---|
+| static screen | ~55% of a core, 25 fps | ~12-17%, ~1.5 fps |
+| animation on screen | ~62%, 25 fps | ~65%, 25 fps |
+| screen change → visible in client | ~110 ms | ~50 ms (median) |
+| viewer joining a static screen | ~1.2 s | ~1.2-1.4 s |
+
+Properties: `max-interval-ms` (heartbeat, default 1000), `keyframe-interval-ms` (default 1000), `hold-ms` (default 200), `track-pointer` (default true), `enabled`.
+
 ## Neko Lite Client
 
 The `client/` directory contains a stripped-down Vue frontend based on Neko's original client. Chat, emotes, file transfer, members list, sidebar, and about dialog are removed. The Dockerfile uses a multi-stage build to compile and serve this client instead of the default Neko UI.
