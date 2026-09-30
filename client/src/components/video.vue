@@ -290,7 +290,6 @@
       return this.$accessor.video.playable
     }
 
-
     // emotes overlay removed
 
     get autoplay() {
@@ -519,9 +518,11 @@
         this.$client.sendData('keyup', { key: this.keyMap(key) })
       }
       this.keyboard.listenTo(this._overlay)
+      window.addEventListener('focus', this._onWindowFocus)
     }
 
     beforeDestroy() {
+      window.removeEventListener('focus', this._onWindowFocus)
       this.observer.disconnect()
       this.$accessor.video.setPlayable(false)
       /* Guacamole Keyboard does not provide destroy functions */
@@ -844,6 +845,11 @@
       }
 
       this.focused = true
+    }
+
+    // stable reference for add/removeEventListener
+    private _onWindowFocus = () => {
+      if (this.hosting) this.syncClipboard()
     }
 
     onMouseLeave(e: MouseEvent) {
