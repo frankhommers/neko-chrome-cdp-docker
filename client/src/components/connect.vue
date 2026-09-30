@@ -13,7 +13,7 @@
         <div class="title">Connect</div>
         <label>
           <span>Display name</span>
-          <input type="text" autocomplete="name" v-model.trim="displayname" />
+          <input type="text" autocomplete="name" v-model.trim="displayname" autofocus />
         </label>
         <label>
           <span>Password</span>
@@ -39,6 +39,12 @@
 
       const qPassword = params.get('password')
       const qName = params.get('name')
+
+      // ?scroll=1..100 sets scroll sensitivity and persists it (upstream #681)
+      const qScroll = parseInt(params.get('scroll') || '', 10)
+      if (!isNaN(qScroll)) {
+        this.$accessor.settings.setScroll(Math.max(1, Math.min(qScroll, 100)))
+      }
 
       // prefill from local storage-backed store
       this.displayname = this.$accessor.displayname || ''

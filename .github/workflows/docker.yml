@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # Weekly rebuild so Chrome stable and the Neko base image stay current
+  # without needing a commit. Monday 06:23 UTC.
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -40,6 +45,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=schedule,pattern={{date 'YYYYMMDD'}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
@@ -50,5 +56,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # scheduled/manual runs must not reuse cached layers, otherwise the
+          # apt layer that upgrades Chrome is never re-run
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

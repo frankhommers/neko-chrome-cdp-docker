@@ -13,13 +13,29 @@ The goal is to stay compatible with upstream Neko behavior and feature/fix evolu
 
 ## Current reviewed upstream baseline
 
-Last reviewed upstream state:
+Last reviewed upstream state (2026-09-30):
 
-- Upstream repository HEAD: `2c124c50`
-- Last upstream commit touching `client/`: `6c743c9c733ee170d66a6f73c96ba98355812287`
-- Upstream Neko tags containing that client commit: `v3.0.11` through `v3.1.4`
+- Upstream repository HEAD: `3f4f940`
+- Last upstream commit touching `client/`: `dae23a90b52bb31d8cdf047f41ae01b9bf41defa`
+- Upstream Neko tags containing that client commit: none yet (after `v3.1.5`)
 - Local `client/package.json` version: `2.5.0`
 - Upstream `client/package.json` version at review time: `2.5.0`
+
+### Review log 2026-09-30 (`6c743c9c..dae23a90`)
+
+Ported:
+
+- `3bb1959` sync clipboard on window focus (#662)
+- `d74052b` autofocus display name on the connect form (#654)
+- `30d8e1c` `?scroll=` query param for scroll sensitivity, persisted (#681); adapted into `connect.vue`
+
+Skipped (not applicable to the lite client):
+
+- `ba098db` markdown attribute sanitizing: the lite client has no chat and no markdown renderer
+- `cc01457` openinapp plugin: chat-only feature
+- `613647c`, `d6a4200`, `44ccf64` file transfer changes: file transfer UI is removed
+- `dae23a9` OIDC member login: not used here (multiuser provider); revisit if OAuth/OIDC login is ever enabled.
+  The protocol change is only an optional `avatar` field on members, which the lite client can ignore.
 
 When upstream client changes are reviewed and intentionally ported or skipped, update the baseline above.
 
