@@ -25,6 +25,26 @@
     </div>
 
     <div class="row">
+      <span
+        title="Disconnect the stream after a period without mouse/keyboard input, so the server stops encoding video"
+        >Deactivate on inactivity</span
+      >
+      <label class="switch">
+        <input type="checkbox" v-model="deactivate_on_inactivity" />
+        <span />
+      </label>
+    </div>
+
+    <div class="row" v-if="deactivate_on_inactivity">
+      <span>Inactivity timeout</span>
+      <label class="select">
+        <select v-model.number="inactivity_minutes">
+          <option v-for="m in inactivity_options" :key="m" :value="m">{{ m }} min</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
       <span>Keyboard layout</span>
       <label class="select">
         <select v-model="keyboard_layout">
@@ -62,6 +82,26 @@
 
     set autoplay(value: boolean) {
       this.$accessor.settings.setAutoplay(value)
+    }
+
+    get deactivate_on_inactivity() {
+      return this.$accessor.settings.deactivate_on_inactivity
+    }
+
+    set deactivate_on_inactivity(value: boolean) {
+      this.$accessor.settings.setDeactivateOnInactivity(value)
+    }
+
+    get inactivity_minutes() {
+      return this.$accessor.settings.inactivity_minutes
+    }
+
+    set inactivity_minutes(value: number) {
+      this.$accessor.settings.setInactivityMinutes(value)
+    }
+
+    get inactivity_options() {
+      return [1, 2, 5, 10, 15, 30, 60]
     }
 
     get keyboard_layout() {
