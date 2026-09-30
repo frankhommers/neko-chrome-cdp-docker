@@ -56,5 +56,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # scheduled/manual runs must not reuse cached layers, otherwise the
+          # apt layer that upgrades Chrome is never re-run
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
