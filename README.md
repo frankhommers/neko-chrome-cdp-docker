@@ -160,6 +160,12 @@ Audio is force-disabled at two levels, so no `neko.yaml` audio config is needed:
 
 The `client/` directory contains a stripped-down Vue frontend based on Neko's original client. Chat, emotes, file transfer, members list, sidebar, and about dialog are removed. The Dockerfile uses a multi-stage build to compile and serve this client instead of the default Neko UI.
 
+### Deactivate on inactivity
+
+Neko keeps capturing and encoding the screen (1080p VP8 at 25 fps, roughly half a CPU core) for as long as a viewer is connected, even when nothing on screen changes. A forgotten background tab therefore costs constant CPU.
+
+The settings menu has a **Deactivate on inactivity** toggle (on by default, 5 min timeout, configurable 1–60 min). After the timeout without mouse, keyboard, wheel, or touch input the client disconnects its WebRTC session and shows a *Stream paused* overlay; the server then stops its capture pipeline. Click **Resume** to reconnect with the stored credentials. Switch the toggle off when you want to passively watch an automation run. The setting is stored per browser in `localStorage`.
+
 ## Files
 
 ```text

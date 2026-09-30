@@ -17,6 +17,8 @@ export const state = () => {
     ignore_emotes: get<boolean>('ignore_emotes', false),
     chat_sound: get<boolean>('chat_sound', true),
     keyboard_layout: get<string>('keyboard_layout', 'us'),
+    deactivate_on_inactivity: get<boolean>('deactivate_on_inactivity', true),
+    inactivity_minutes: get<number>('inactivity_minutes', 5),
 
     keyboard_layouts_list: {} as KeyboardLayouts,
 
@@ -56,6 +58,16 @@ export const mutations = mutationTree(state, {
   setKeyboardLayout(state, value: string) {
     state.keyboard_layout = value
     set('keyboard_layout', value)
+  },
+
+  setDeactivateOnInactivity(state, value: boolean) {
+    state.deactivate_on_inactivity = value
+    set('deactivate_on_inactivity', value)
+  },
+
+  setInactivityMinutes(state, value: number) {
+    state.inactivity_minutes = value
+    set('inactivity_minutes', value)
   },
 
   setKeyboardLayoutsList(state, value: KeyboardLayouts) {

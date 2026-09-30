@@ -9,12 +9,7 @@
         <neko-video ref="video" :hideControls="true" :extraControls="false" />
 
         <transition name="toolbar-fade">
-          <div
-            v-show="toolbarVisible && connected"
-            class="toolbar"
-            :class="{ hidden: !toolbarShown }"
-            @mousemove.stop
-          >
+          <div v-show="toolbarVisible && connected" class="toolbar" :class="{ hidden: !toolbarShown }" @mousemove.stop>
             <button
               class="btn"
               :class="{ active: hosting || controlling }"
@@ -54,7 +49,16 @@
         <neko-clipboard ref="clipboard" v-if="hosting" />
       </div>
 
-      <neko-connect v-if="!connected" />
+      <div v-if="paused" class="paused" @click.stop.prevent="resume">
+        <div class="paused-window">
+          <i class="fas fa-pause" />
+          <div class="paused-title">Stream paused</div>
+          <div class="paused-text">Deactivated after {{ inactivityMinutes }} min of inactivity.</div>
+          <button type="button" @click.stop.prevent="resume">Resume</button>
+        </div>
+      </div>
+
+      <neko-connect v-else-if="!connected" />
     </template>
   </div>
 </template>
@@ -89,6 +93,13 @@
     private toolbarTimer?: number
     private settingsOpen = false
 
+    // Deactivate on inactivity: drop the WebRTC session when idle so the
+    // server stops capturing/encoding (neko keeps encoding a static screen).
+    private paused = false
+    private lastActivity = Date.now()
+    private idleTimer?: number
+    private readonly activityEvents = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown']
+
     get connected() {
       return this.$accessor.connected
     }
@@ -109,6 +120,10 @@
       return 'control' in this.$accessor.locked && this.$accessor.locked['control'] && !this.$accessor.user.admin
     }
 
+    get inactivityMinutes() {
+      return this.$accessor.settings.inactivity_minutes
+    }
+
     get toolbarVisible() {
       // still render the toolbar container only after connection
       return true
@@ -118,11 +133,26 @@
       this.resetToolbarTimer()
       window.addEventListener('keydown', this.onKeyDown)
       document.addEventListener('click', this.onGlobalClick)
+
+      // capture phase: the video element stops propagation of its input events
+      for (const ev of this.activityEvents) {
+        window.addEventListener(ev, this.onActivity, { capture: true, passive: true })
+      }
+      document.addEventListener('visibilitychange', this.onVisibilityChange)
+      this.idleTimer = window.setInterval(this.checkIdle, 5000)
     }
 
     beforeDestroy() {
       window.removeEventListener('keydown', this.onKeyDown)
       document.removeEventListener('click', this.onGlobalClick)
+      for (const ev of this.activityEvents) {
+        window.removeEventListener(ev, this.onActivity, { capture: true })
+      }
+      document.removeEventListener('visibilitychange', this.onVisibilityChange)
+      if (this.idleTimer) {
+        clearInterval(this.idleTimer)
+        this.idleTimer = undefined
+      }
       if (this.toolbarTimer) {
         clearTimeout(this.toolbarTimer)
         this.toolbarTimer = undefined
@@ -142,6 +172,47 @@
         this.toolbarShown = false
         this.settingsOpen = false
       }, 3000)
+    }
+
+    onActivity() {
+      this.lastActivity = Date.now()
+    }
+
+    onVisibilityChange() {
+      // coming back to the tab counts as activity; leaving it lets the timer run out
+      if (document.visibilityState === 'visible') {
+        this.lastActivity = Date.now()
+      }
+    }
+
+    checkIdle() {
+      const settings = this.$accessor.settings
+      if (this.paused || !this.connected || !settings.deactivate_on_inactivity) {
+        return
+      }
+
+      const idleMs = Date.now() - this.lastActivity
+      if (idleMs >= settings.inactivity_minutes * 60 * 1000) {
+        this.pause()
+      }
+    }
+
+    pause() {
+      console.warn('[neko-lite] deactivated after inactivity')
+      this.paused = true
+      this.settingsOpen = false
+      // disconnects websocket + peer but keeps stored credentials
+      this.$client.logout()
+    }
+
+    resume() {
+      if (!this.paused) return
+      this.paused = false
+      this.lastActivity = Date.now()
+      const { displayname, password } = this.$accessor
+      if (displayname) {
+        this.$accessor.login({ displayname, password })
+      }
     }
 
     onGlobalClick() {
@@ -264,6 +335,56 @@
     border-radius: 12px;
     box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
     padding: 10px;
+  }
+
+  #neko-lite .paused {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    cursor: pointer;
+  }
+
+  #neko-lite .paused-window {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 26px;
+    border-radius: 14px;
+    background: rgba(20, 20, 20, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.5);
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+  }
+
+  #neko-lite .paused-window .fa-pause {
+    font-size: 26px;
+    opacity: 0.8;
+  }
+
+  #neko-lite .paused-title {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  #neko-lite .paused-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  #neko-lite .paused-window button {
+    margin-top: 6px;
+    padding: 9px 22px;
+    border-radius: 10px;
+    border: 1px solid rgba(88, 101, 242, 0.45);
+    background: rgba(88, 101, 242, 0.85);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .toolbar-fade-enter-active,
