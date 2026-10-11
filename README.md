@@ -184,11 +184,18 @@ Properties: `max-interval-ms` (heartbeat, default 1000), `keyframe-interval-ms` 
 
 The `client/` directory contains a stripped-down Vue frontend based on Neko's original client. Chat, emotes, file transfer, members list, sidebar, and about dialog are removed. The Dockerfile uses a multi-stage build to compile and serve this client instead of the default Neko UI.
 
-### Deactivate on inactivity
+### Viewing controls
 
-Neko keeps capturing and encoding the screen (1080p VP8 at 25 fps, roughly half a CPU core) for as long as a viewer is connected, even when nothing on screen changes. A forgotten background tab therefore costs constant CPU.
+Neko keeps capturing and encoding the screen for as long as a viewer is connected, and every connected viewer is one more stream. The settings menu (gear icon) has a **Viewing** section to keep that in check. Settings are stored per browser in `localStorage`.
 
-The settings menu has a **Deactivate on inactivity** toggle (on by default, 5 min timeout, configurable 1–60 min). After the timeout without mouse, keyboard, wheel, or touch input the client disconnects its WebRTC session and shows a *Stream paused* overlay; the server then stops its capture pipeline. Click **Resume** to reconnect with the stored credentials. Switch the toggle off when you want to passively watch an automation run. The setting is stored per browser in `localStorage`.
+| Setting | Default | What it does |
+|---|---|---|
+| One stream at a time | on | When another viewer connects, this stream pauses with a *Take back* button. Taking back pauses the other viewer. |
+| Pause when idle | on, 5 min | Pause after N minutes without mouse, keyboard, wheel or touch input (1–60 min). |
+| Pause in background | on, 2 min | Pause after the tab has been hidden for N minutes (or directly). Resumes by itself when you return. |
+| Max viewing time | off, 60 min | Pause after N minutes of viewing, even while active (15 min – 4 h). |
+
+The toolbar also has a **pause** button. While paused, the WebRTC session is closed so the server stops encoding; Chrome and CDP automation keep running. Switch the timers off to passively watch a long automation run.
 
 ## Files
 

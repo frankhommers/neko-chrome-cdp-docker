@@ -19,6 +19,11 @@ export const state = () => {
     keyboard_layout: get<string>('keyboard_layout', 'us'),
     deactivate_on_inactivity: get<boolean>('deactivate_on_inactivity', true),
     inactivity_minutes: get<number>('inactivity_minutes', 5),
+    single_viewer: get<boolean>('single_viewer', true),
+    pause_in_background: get<boolean>('pause_in_background', true),
+    background_minutes: get<number>('background_minutes', 2),
+    max_view_enabled: get<boolean>('max_view_enabled', false),
+    max_view_minutes: get<number>('max_view_minutes', 60),
 
     keyboard_layouts_list: {} as KeyboardLayouts,
 
@@ -68,6 +73,31 @@ export const mutations = mutationTree(state, {
   setInactivityMinutes(state, value: number) {
     state.inactivity_minutes = value
     set('inactivity_minutes', value)
+  },
+
+  setSingleViewer(state, value: boolean) {
+    state.single_viewer = value
+    set('single_viewer', value)
+  },
+
+  setPauseInBackground(state, value: boolean) {
+    state.pause_in_background = value
+    set('pause_in_background', value)
+  },
+
+  setBackgroundMinutes(state, value: number) {
+    state.background_minutes = value
+    set('background_minutes', value)
+  },
+
+  setMaxViewEnabled(state, value: boolean) {
+    state.max_view_enabled = value
+    set('max_view_enabled', value)
+  },
+
+  setMaxViewMinutes(state, value: number) {
+    state.max_view_minutes = value
+    set('max_view_minutes', value)
   },
 
   setKeyboardLayoutsList(state, value: KeyboardLayouts) {

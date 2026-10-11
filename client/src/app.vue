@@ -28,6 +28,10 @@
               <i class="fas fa-desktop" />
             </button>
 
+            <button class="btn" title="Pause stream" @click.stop.prevent="pause('manual')">
+              <i class="fas fa-pause" />
+            </button>
+
             <div class="dropdown">
               <button class="btn" title="Settings" @click.stop.prevent="toggleSettings">
                 <i class="fas fa-gear" />
@@ -53,8 +57,10 @@
         <div class="paused-window">
           <i class="fas fa-pause" />
           <div class="paused-title">Stream paused</div>
-          <div class="paused-text">Deactivated after {{ inactivityMinutes }} min of inactivity.</div>
-          <button type="button" @click.stop.prevent="resume">Resume</button>
+          <div class="paused-text">{{ pauseText }}</div>
+          <button type="button" @click.stop.prevent="resume">
+            {{ pauseReason === 'takeover' ? 'Take back' : 'Resume' }}
+          </button>
         </div>
       </div>
 
@@ -64,7 +70,7 @@
 </template>
 
 <script lang="ts">
-  import { Component, Ref, Vue } from 'vue-property-decorator'
+  import { Component, Ref, Vue, Watch } from 'vue-property-decorator'
 
   import Video from '~/components/video.vue'
   import Connect from '~/components/connect.vue'
@@ -95,8 +101,12 @@
 
     // Deactivate on inactivity: drop the WebRTC session when idle so the
     // server stops capturing/encoding (neko keeps encoding a static screen).
-    private paused = false
+    // why the stream is paused: '' (not paused) | idle | background | max | takeover | manual
+    private pauseReason = ''
+    private pauseMinutes = 0
     private lastActivity = Date.now()
+    private hiddenSince = 0
+    private viewStart = 0
     private idleTimer?: number
     private readonly activityEvents = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown']
 
@@ -120,8 +130,43 @@
       return 'control' in this.$accessor.locked && this.$accessor.locked['control'] && !this.$accessor.user.admin
     }
 
-    get inactivityMinutes() {
-      return this.$accessor.settings.inactivity_minutes
+    get paused() {
+      return this.pauseReason !== ''
+    }
+
+    get pauseText() {
+      switch (this.pauseReason) {
+        case 'idle':
+          return `Paused after ${this.pauseMinutes} min without input.`
+        case 'background':
+          return 'Paused while the tab was in the background.'
+        case 'max':
+          return `Paused after ${this.pauseMinutes} min of viewing (max viewing time).`
+        case 'takeover':
+          return 'Another viewer connected. Only one stream is active at a time.'
+        default:
+          return 'The stream is paused; the browser keeps running.'
+      }
+    }
+
+    get lastJoin() {
+      return this.$accessor.user.lastJoin
+    }
+
+    @Watch('connected')
+    onConnectedChanged(connected: boolean) {
+      if (connected) this.viewStart = Date.now()
+    }
+
+    @Watch('lastJoin')
+    onMemberJoined(join: { id: string; at: number }) {
+      // single-viewer mode: a newer viewer takes over, this one steps back
+      if (!this.$accessor.settings.single_viewer || !this.connected || this.paused) return
+      if (!join.id || join.id === this.$client.id) return
+      // only viewers that join after our own stream came up (initial members arrive via member/list,
+      // our own session is excluded above and cannot match before we are connected)
+      if (join.at < this.viewStart) return
+      this.pause('takeover')
     }
 
     get toolbarVisible() {
@@ -139,7 +184,7 @@
         window.addEventListener(ev, this.onActivity, { capture: true, passive: true })
       }
       document.addEventListener('visibilitychange', this.onVisibilityChange)
-      this.idleTimer = window.setInterval(this.checkIdle, 5000)
+      this.idleTimer = window.setInterval(this.checkIdle, 2000)
     }
 
     beforeDestroy() {
@@ -179,27 +224,51 @@
     }
 
     onVisibilityChange() {
-      // coming back to the tab counts as activity; leaving it lets the timer run out
       if (document.visibilityState === 'visible') {
+        // coming back to the tab counts as activity
+        this.hiddenSince = 0
         this.lastActivity = Date.now()
+        // a background pause resumes by itself
+        if (this.pauseReason === 'background') this.resume()
+        return
       }
+
+      this.hiddenSince = Date.now()
+      this.checkIdle()
     }
 
     checkIdle() {
       const settings = this.$accessor.settings
-      if (this.paused || !this.connected || !settings.deactivate_on_inactivity) {
+      if (this.paused || !this.connected) return
+      const now = Date.now()
+
+      if (settings.pause_in_background && this.hiddenSince > 0) {
+        if (now - this.hiddenSince >= settings.background_minutes * 60 * 1000) {
+          this.pause('background')
+          return
+        }
+      }
+
+      if (settings.deactivate_on_inactivity && now - this.lastActivity >= settings.inactivity_minutes * 60 * 1000) {
+        this.pauseMinutes = settings.inactivity_minutes
+        this.pause('idle')
         return
       }
 
-      const idleMs = Date.now() - this.lastActivity
-      if (idleMs >= settings.inactivity_minutes * 60 * 1000) {
-        this.pause()
+      if (
+        settings.max_view_enabled &&
+        this.viewStart > 0 &&
+        now - this.viewStart >= settings.max_view_minutes * 60 * 1000
+      ) {
+        this.pauseMinutes = settings.max_view_minutes
+        this.pause('max')
       }
     }
 
-    pause() {
-      console.warn('[neko-lite] deactivated after inactivity')
-      this.paused = true
+    pause(reason: string) {
+      if (this.paused || !this.connected) return
+      console.warn(`[neko-lite] stream paused (${reason})`)
+      this.pauseReason = reason
       this.settingsOpen = false
       // disconnects websocket + peer but keeps stored credentials
       this.$client.logout()
@@ -207,8 +276,9 @@
 
     resume() {
       if (!this.paused) return
-      this.paused = false
+      this.pauseReason = ''
       this.lastActivity = Date.now()
+      this.hiddenSince = document.visibilityState === 'visible' ? 0 : Date.now()
       const { displayname, password } = this.$accessor
       if (displayname) {
         this.$accessor.login({ displayname, password })
@@ -329,8 +399,12 @@
     bottom: 56px;
     transform: translateX(-50%);
     min-width: 320px;
-    max-width: min(92vw, 380px);
-    background: rgba(20, 20, 20, 0.9);
+    max-width: min(92vw, 400px);
+    max-height: 75vh;
+    overflow-y: auto;
+    background: #161618;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
