@@ -14,6 +14,8 @@ interface Members {
 export const state = () => ({
   id: '',
   members: {} as Members,
+  // last member that connected while we were connected (used for single-viewer mode)
+  lastJoin: { id: '', at: 0 },
 })
 
 export const getters = getterTree(state, {
@@ -50,6 +52,7 @@ export const mutations = mutationTree(state, {
     state.id = id
   },
   addMember(state, member: Member) {
+    state.lastJoin = { id: member.id, at: Date.now() }
     state.members = {
       ...state.members,
       [member.id]: {

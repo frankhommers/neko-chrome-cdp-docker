@@ -53,7 +53,9 @@
       if (qName) this.displayname = qName
       if (qPassword) this.password = qPassword
 
-      if (qName && qPassword) {
+      // skip if a login is already in flight (e.g. resuming a paused stream),
+      // otherwise this would open a second session
+      if (qName && qPassword && !this.$accessor.connecting && !this.$accessor.connected) {
         this.autoConnecting = true
         this.$nextTick(() => {
           this.$accessor.login({ displayname: this.displayname, password: this.password })
