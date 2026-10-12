@@ -1,19 +1,19 @@
 {
-    "name": "n.eko",
-    "short_name": "n.eko",
+    "name": "Neko \u00b7 Chrome",
+    "short_name": "Neko \u00b7 Chrome",
     "icons": [
         {
-            "src": "/android-chrome-192x192.png",
+            "src": "android-chrome-192x192.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "/android-chrome-512x512.png",
+            "src": "android-chrome-512x512.png",
             "sizes": "512x512",
             "type": "image/png"
         }
     ],
-    "theme_color": "#19bd9c",
-    "background_color": "#19bd9c",
+    "theme_color": "#1a73e8",
+    "background_color": "#000000",
     "display": "standalone"
 }
