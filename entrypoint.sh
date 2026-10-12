@@ -19,4 +19,19 @@ else
   echo "[entrypoint] WG routing skipped (set WG_GATEWAY, WG_ENDPOINT, PROXY_GATEWAY to enable)"
 fi
 
+# Optional page title override (browser tab + installed web app name)
+if [ -n "${PAGE_TITLE:-}" ]; then
+  python3 - "$PAGE_TITLE" <<'PY'
+import html, json, re, sys
+t = sys.argv[1]
+p = "/var/www/index.html"; s = open(p).read()
+s = re.sub(r"<title>.*?</title>", "<title>" + html.escape(t) + "</title>", s, count=1)
+open(p, "w").write(s)
+p = "/var/www/site.webmanifest"; m = json.load(open(p))
+m["name"] = m["short_name"] = t
+json.dump(m, open(p, "w"), indent=4)
+PY
+  echo "[entrypoint] page title set to: ${PAGE_TITLE}"
+fi
+
 exec /usr/bin/supervisord -c /etc/neko/supervisord.conf

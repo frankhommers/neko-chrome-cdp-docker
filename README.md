@@ -180,6 +180,21 @@ Measured with a connected client, 1080p VP8, same host:
 
 Properties: `max-interval-ms` (heartbeat, default 1000), `keyframe-interval-ms` (default 1000), `hold-ms` (default 200), `track-pointer` (default true), `enabled`.
 
+## Branding (page title and favicon)
+
+The browser tab shows the page title and favicon from `client/public/`. Both are generated from `branding/logo.png` by `scripts/brand.py` (needs ImageMagick):
+
+```bash
+python3 scripts/brand.py . "Neko · Helium" "#3b50d8" path/to/logo.png
+```
+
+To override only the title at runtime (e.g. to tell several deployments apart), set `PAGE_TITLE`:
+
+```yaml
+environment:
+  PAGE_TITLE: "Aivy · Helium"
+```
+
 ## Neko Lite Client
 
 The `client/` directory contains a stripped-down Vue frontend based on Neko's original client. Chat, emotes, file transfer, members list, sidebar, and about dialog are removed. The Dockerfile uses a multi-stage build to compile and serve this client instead of the default Neko UI.
